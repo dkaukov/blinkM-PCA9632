@@ -18,22 +18,96 @@
 uint8_t regs[0x10] = {0};
 uint8_t reg_pointer = 0;
 
-// RGB pins (hardware PWM-capable)
-const uint8_t pinR = PB3; // OC1A
-const uint8_t pinG = PB4; // OC1B
-const uint8_t pinB = PB0; // fallback to Timer0 OC0A
+const uint8_t pinR = PB3;  // Software PWM (Red)
+const uint8_t pinG = PB4;  
+const uint8_t pinB = PB1;  
+
+volatile uint8_t* Port[3]   = {&OCR1A, &OCR1B, &OCR0B};
+volatile uint8_t current[3] = {0xFF, 0xFF, 0xFF};
+
+// Sets colour Red=0 Green=1 Blue=2 White=3
+// to specified intensity 0 (off) to 255 (max)
+void SetColour(int colour, int intensity) {
+    if (current[colour] != intensity) {
+        current[colour] = intensity;
+        noInterrupts();
+        *Port[colour] = 255 - intensity;
+        interrupts();
+    }
+}  
+
+void testLED() {
+    for (int i = 0; i < 255; i++) {
+        SetColour(0, i); // Red
+        delay(1);  
+    }
+    for (int i = 255; i >= 0; i--) {
+        SetColour(0, i); // Red
+        delay(1);
+    }
+    for (int i = 0; i < 255; i++) {
+        SetColour(1, i); // Green
+        delay(1);
+    }
+    for (int i = 255; i >= 0; i--) {
+        SetColour(1, i); // Green
+        delay(1);
+    }
+    for (int i = 0; i < 255; i++) {
+        SetColour(2, i); // Blue
+        delay(1);
+    }
+    for (int i = 255; i >= 0; i--) {
+        SetColour(2, i); // Blue
+        delay(1);
+    }
+
+    for (int i = 0; i < 255; i++) {
+        SetColour(0, i); // Red
+        delay(1);  
+    }
+    for (int i = 0; i < 255; i++) {
+        SetColour(1, i); // Green
+        delay(1);
+    }
+    for (int i = 0; i < 255; i++) {
+        SetColour(2, i); // Blue
+        delay(1);
+    }
+    for (int i = 0; i < 255; i++) {
+        SetColour(0, 255 - i); // Red
+        SetColour(1, 255 - i); // Green
+        SetColour(2, 255 - i); // Blue
+        delay(1);
+    }
+}
 
 void receiveEvent(uint8_t numBytes);
 void requestEvent();
 
 void setup() {
-    pinMode(pinR, OUTPUT);
-    pinMode(pinG, OUTPUT);
-    pinMode(pinB, OUTPUT);
+    // Configure counter/timer0 for fast PWM on PB0 and PB1
+    TCCR0A = 3<<COM0A0 | 3<<COM0B0 | 3<<WGM00;
+    TCCR0B = 0<<WGM02 | 3<<CS00; // Optional; already set
+    // Configure counter/timer1 for fast PWM on PB4
+    TCCR1 = 1<<CTC1 | 1<<PWM1A | 3<<COM1A0 | 7<<CS10;
+    GTCCR = 1<<PWM1B | 3<<COM1B0;
+    // Interrupts on OC1A match and overflow
+    TIMSK = TIMSK | 1<<OCIE1A | 1<<TOIE1;
+
+    SetColour(0, 0);
+    SetColour(1, 0);
+    SetColour(2, 0);
 
     TinyWireS.begin(I2C_SLAVE_ADDR);
     TinyWireS.onReceive(receiveEvent);
     TinyWireS.onRequest(requestEvent);
+    sei();  // Enable global interrupts
+    delay(3); 
+    pinMode(pinR, OUTPUT);
+    pinMode(pinG, OUTPUT);
+    pinMode(pinB, OUTPUT);
+    //testLED();
 }
 
 void loop() {
@@ -41,9 +115,9 @@ void loop() {
 
     // MODE1 bit 4 = sleep
     if (regs[MODE1_REG] & 0x10) {
-        analogWrite(pinR, 0);
-        analogWrite(pinG, 0);
-        analogWrite(pinB, 0);
+        SetColour(0, 0);
+        SetColour(1, 0);
+        SetColour(2, 0);
         return;
     }
 
@@ -58,10 +132,19 @@ void loop() {
             default:   return 0;
         }
     };
+    SetColour(0, resolveOutput(0, regs[PWM0_REG]));
+    SetColour(1, resolveOutput(1, regs[PWM1_REG]));
+    SetColour(2, resolveOutput(2, regs[PWM2_REG]));
+}
 
-    analogWrite(pinR, resolveOutput(0, regs[PWM0_REG]));
-    analogWrite(pinG, resolveOutput(1, regs[PWM1_REG]));
-    analogWrite(pinB, resolveOutput(2, regs[PWM2_REG]));
+ISR(TIMER1_OVF_vect) {
+    bitClear(PORTB, PB3);  // Start of cycle: PB3 LOW
+}
+
+ISR(TIMER1_COMPA_vect) {
+    if (!bitRead(TIFR, TOV1)) {
+        bitSet(PORTB, PB3);  // Set PB3 HIGH if we’re still in cycle
+    }
 }
 
 void receiveEvent(uint8_t numBytes) {
