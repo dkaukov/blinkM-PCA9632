@@ -15,7 +15,18 @@
 #define GRPFREQ_REG   0x07
 #define LEDOUT_REG    0x08
 
-uint8_t regs[0x10] = {0};
+uint8_t regs[0x10] = {
+    0x00, // MODE1
+    0x00, // MODE2
+    0x00, // PWM0
+    0x00, // PWM1
+    0x00, // PWM2
+    0x00, // PWM3
+    0xFF, // GRPPWM
+    0x1F, // GRPFREQ
+    0x00  // LEDOUT
+    // The rest default to 0
+};
 uint8_t reg_pointer = 0;
 
 const uint8_t pinR = PB3;  // Software PWM (Red)
