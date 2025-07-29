@@ -38,7 +38,8 @@ volatile uint8_t current[3] = {0xFF, 0xFF, 0xFF};
 
 // Sets colour Red=0 Green=1 Blue=2 White=3
 // to specified intensity 0 (off) to 255 (max)
-void SetColour(int colour, int intensity) {
+void SetColour(uint8_t colour, uint8_t intensity) {
+    if (intensity > 254) intensity = 254;
     if (current[colour] != intensity) {
         current[colour] = intensity;
         noInterrupts();
@@ -48,7 +49,7 @@ void SetColour(int colour, int intensity) {
 }  
 
 void testLED() {
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(0, i); // Red
         delay(1);  
     }
@@ -56,7 +57,7 @@ void testLED() {
         SetColour(0, i); // Red
         delay(1);
     }
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(1, i); // Green
         delay(1);
     }
@@ -64,7 +65,7 @@ void testLED() {
         SetColour(1, i); // Green
         delay(1);
     }
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(2, i); // Blue
         delay(1);
     }
@@ -73,19 +74,19 @@ void testLED() {
         delay(1);
     }
 
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(0, i); // Red
         delay(1);  
     }
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(1, i); // Green
         delay(1);
     }
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(2, i); // Blue
         delay(1);
     }
-    for (int i = 0; i < 255; i++) {
+    for (int i = 0; i <= 255; i++) {
         SetColour(0, 255 - i); // Red
         SetColour(1, 255 - i); // Green
         SetColour(2, 255 - i); // Blue
@@ -95,6 +96,7 @@ void testLED() {
 
 void receiveEvent(uint8_t numBytes);
 void requestEvent();
+void processEvent();
 
 void setup() {
     // Configure counter/timer0 for fast PWM on PB0 and PB1
@@ -119,6 +121,7 @@ void setup() {
     pinMode(pinG, OUTPUT);
     pinMode(pinB, OUTPUT);
     //testLED();
+    //SetColour(0, 255);
 }
 
 void loop() {
@@ -133,7 +136,7 @@ void processEvent() {
         SetColour(2, 0);
         return;
     }
-    uint8_t ledout = regs[LEDOUT_REG];
+    uint8_t ledout =  regs[LEDOUT_REG];
     for (uint8_t channel = 0; channel < 3; channel++) {
         uint8_t mode = (ledout >> (channel * 2)) & 0x03;
         uint8_t value;
@@ -141,7 +144,7 @@ void processEvent() {
             case 0x00: value = 0; break;                          // OFF
             case 0x01: value = 255; break;                        // ON
             case 0x02: value = regs[PWM0_REG + channel]; break;   // Individual PWM
-            case 0x03: value = regs[GRPPWM_REG]; break;           // Group PWM
+            case 0x03: value = (uint16_t(regs[PWM0_REG + channel]) * uint16_t(regs[GRPPWM_REG])) >> 8; break; // Group PWM
             default:   value = 0; break;
         }
         SetColour(channel, value);
@@ -161,19 +164,21 @@ ISR(TIMER1_COMPA_vect) {
 void receiveEvent(uint8_t numBytes) {
     if (numBytes < 1) return;
     if (numBytes > sizeof(regs)) return;
-    reg_pointer = TinyWireS.receive();
-    numBytes--;
-    while (numBytes--) {
-        regs[reg_pointer++] = TinyWireS.receive();
+    reg_pointer = TinyWireS.receive(); numBytes--;
+    while (numBytes > 0) {
+        regs[reg_pointer] = TinyWireS.receive();
+        reg_pointer++;
+        numBytes--;
+
     }
     reg_pointer = 0;
     processEvent();
 }
 
 void requestEvent() {
-    if (reg_pointer < sizeof(regs)) {
-        TinyWireS.send(regs[reg_pointer++]);
-    } else {
-        TinyWireS.send(0xFF);
+    TinyWireS.send(regs[reg_pointer]);
+    reg_pointer++;
+    if (reg_pointer >= sizeof(regs)) {
+        reg_pointer = 0;
     }
 }
