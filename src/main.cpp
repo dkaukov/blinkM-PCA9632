@@ -112,7 +112,9 @@ void setup() {
 
 void loop() {
     TinyWireS_stop_check();
+}
 
+void processEvent() {
     // MODE1 bit 4 = sleep
     if (regs[MODE1_REG] & 0x10) {
         SetColour(0, 0);
@@ -120,21 +122,19 @@ void loop() {
         SetColour(2, 0);
         return;
     }
-
     uint8_t ledout = regs[LEDOUT_REG];
-
-    auto resolveOutput = [&](uint8_t channel, uint8_t pwmVal) -> uint8_t {
-        switch ((ledout >> (channel * 2)) & 0x03) {
-            case 0x00: return 0;                     // OFF
-            case 0x01: return 255;                   // ON
-            case 0x02: return pwmVal;                // Individual PWM
-            case 0x03: return regs[GRPPWM_REG];      // Group PWM
-            default:   return 0;
+    for (uint8_t channel = 0; channel < 3; channel++) {
+        uint8_t mode = (ledout >> (channel * 2)) & 0x03;
+        uint8_t value;
+        switch (mode) {
+            case 0x00: value = 0; break;                          // OFF
+            case 0x01: value = 255; break;                        // ON
+            case 0x02: value = regs[PWM0_REG + channel]; break;   // Individual PWM
+            case 0x03: value = regs[GRPPWM_REG]; break;           // Group PWM
+            default:   value = 0; break;
         }
-    };
-    SetColour(0, resolveOutput(0, regs[PWM0_REG]));
-    SetColour(1, resolveOutput(1, regs[PWM1_REG]));
-    SetColour(2, resolveOutput(2, regs[PWM2_REG]));
+        SetColour(channel, value);
+    }
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -149,14 +149,14 @@ ISR(TIMER1_COMPA_vect) {
 
 void receiveEvent(uint8_t numBytes) {
     if (numBytes < 1) return;
+    if (numBytes > sizeof(regs)) return;
     reg_pointer = TinyWireS.receive();
-
-    while (TinyWireS.available()) {
-        uint8_t val = TinyWireS.receive();
-        if (reg_pointer < sizeof(regs)) {
-            regs[reg_pointer++] = val;
-        }
+    numBytes--;
+    while (numBytes--) {
+        regs[reg_pointer++] = TinyWireS.receive();
     }
+    reg_pointer = 0;
+    processEvent();
 }
 
 void requestEvent() {
