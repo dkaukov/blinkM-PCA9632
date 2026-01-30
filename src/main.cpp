@@ -29,6 +29,7 @@ uint8_t regs[0x10] = {
 };
 uint8_t reg_pointer = 0;
 bool auto_increment = false;
+volatile bool pending_process = false;
 
 const uint8_t pinR = PB3;  // Software PWM (Red)
 const uint8_t pinG = PB4;  
@@ -105,8 +106,8 @@ void setup() {
     // Configure counter/timer0 for fast PWM on PB1 (PB0 reserved for SDA)
     TCCR0A = 3<<COM0B0 | 3<<WGM00;
     TCCR0B = 0<<WGM02 | 3<<CS00; // Optional; already set
-    // Configure counter/timer1 for fast PWM on PB4
-    TCCR1 = 1<<CTC1 | 1<<PWM1A | 3<<COM1A0 | 7<<CS10;
+    // Configure counter/timer1 for fast PWM on PB4 (OC1B); OC1A is unused
+    TCCR1 = 1<<CTC1 | 1<<PWM1A | 7<<CS10;
     GTCCR = 1<<PWM1B | 3<<COM1B0;
     // Interrupts on OC1A match and overflow
     TIMSK = TIMSK | 1<<OCIE1A | 1<<TOIE1;
@@ -129,6 +130,13 @@ void setup() {
 
 void loop() {
     TinyWireS_stop_check();
+    if (pending_process) {
+        uint8_t sreg = SREG;
+        cli();
+        pending_process = false;
+        SREG = sreg;
+        processEvent();
+    }
 }
 
 void processEvent() {
@@ -192,7 +200,7 @@ void receiveEvent(uint8_t numBytes) {
         numBytes--;
 
     }
-    processEvent();
+    pending_process = true;
 }
 
 void requestEvent() {
