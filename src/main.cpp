@@ -102,8 +102,8 @@ void processEvent();
 uint8_t nextRegPointer(uint8_t pointer);
 
 void setup() {
-    // Configure counter/timer0 for fast PWM on PB0 and PB1
-    TCCR0A = 3<<COM0A0 | 3<<COM0B0 | 3<<WGM00;
+    // Configure counter/timer0 for fast PWM on PB1 (PB0 reserved for SDA)
+    TCCR0A = 3<<COM0B0 | 3<<WGM00;
     TCCR0B = 0<<WGM02 | 3<<CS00; // Optional; already set
     // Configure counter/timer1 for fast PWM on PB4
     TCCR1 = 1<<CTC1 | 1<<PWM1A | 3<<COM1A0 | 7<<CS10;
