@@ -28,6 +28,7 @@ uint8_t regs[0x10] = {
     // The rest default to 0
 };
 uint8_t reg_pointer = 0;
+bool auto_increment = false;
 
 const uint8_t pinR = PB3;  // Software PWM (Red)
 const uint8_t pinG = PB4;  
@@ -98,6 +99,7 @@ void testLED() {
 void receiveEvent(uint8_t numBytes);
 void requestEvent();
 void processEvent();
+uint8_t nextRegPointer(uint8_t pointer);
 
 void setup() {
     // Configure counter/timer0 for fast PWM on PB0 and PB1
@@ -152,6 +154,16 @@ void processEvent() {
     }
 }
 
+uint8_t nextRegPointer(uint8_t pointer) {
+    if (auto_increment) {
+        pointer++;
+        if (pointer >= sizeof(regs)) {
+            pointer = 0;
+        }
+    }
+    return pointer;
+}
+
 ISR(TIMER1_OVF_vect) {
     bitClear(PORTB, PB3);  // Start of cycle: PB3 LOW
 }
@@ -165,21 +177,26 @@ ISR(TIMER1_COMPA_vect) {
 void receiveEvent(uint8_t numBytes) {
     if (numBytes < 1) return;
     if (numBytes > sizeof(regs)) return;
-    reg_pointer = TinyWireS.receive(); numBytes--;
+    reg_pointer = TinyWireS.receive();
+    if (reg_pointer >= sizeof(regs)) {
+        reg_pointer = 0;
+    }
+    numBytes--;
+    auto_increment = (regs[MODE1_REG] & 0x20) != 0;
     while (numBytes > 0) {
         regs[reg_pointer] = TinyWireS.receive();
-        reg_pointer++;
+        if (reg_pointer == MODE1_REG) {
+            auto_increment = (regs[MODE1_REG] & 0x20) != 0;
+        }
+        reg_pointer = nextRegPointer(reg_pointer);
         numBytes--;
 
     }
-    reg_pointer = 0;
     processEvent();
 }
 
 void requestEvent() {
+    auto_increment = (regs[MODE1_REG] & 0x20) != 0;
     TinyWireS.send(regs[reg_pointer]);
-    reg_pointer++;
-    if (reg_pointer >= sizeof(regs)) {
-        reg_pointer = 0;
-    }
+    reg_pointer = nextRegPointer(reg_pointer);
 }
