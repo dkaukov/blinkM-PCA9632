@@ -42,9 +42,10 @@ void SetColour(uint8_t colour, uint8_t intensity) {
     if (intensity > 254) intensity = 254;
     if (current[colour] != intensity) {
         current[colour] = intensity;
-        noInterrupts();
+        uint8_t sreg = SREG;
+        cli();
         *Port[colour] = 255 - intensity;
-        interrupts();
+        SREG = sreg;
     }
 }  
 
